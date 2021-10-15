@@ -1,0 +1,75 @@
+﻿@page "/"
+
+<h1>This Project Is Liberated!</h1>
+
+<div>
+    <label>Provide content if desired:</label>
+</div>
+<div>
+    <textarea @bind="ContentToSend"></textarea>
+</div>
+<div>
+    <button class="btn btn-primary" @onclick="DoSomethingQueued">Send the content!</button>
+    <button class="btn" @onclick="Clear">clear</button>
+</div>
+<div>
+    <label>Status: @StatusBlurb</label>
+</div>
+
+@using RabbitMQ.Client;
+
+@code {
+    private string StatusBlurb { get; set; }
+    private string ContentToSend { get; set; }
+
+    private const string QueueURI = "GET YOUR QUEUE URI FROM YOUR AMQP INSTALLATION";
+    private const string ExchangeName = "";
+    private const string RoutingKey = "LiberatedQueue";
+    private const string QueueName = "LiberatedQueue";
+
+    private Uri mqUri;
+    private ConnectionFactory mqConnectionFactory;
+    private IConnection mqConnection;
+    private IModel mqChannel;
+
+    private void Clear()
+    {
+        StatusBlurb = "<waiting>";
+    }
+
+    private void DoSomethingQueued()
+    {
+        try
+        {
+            // Open the queue connection.
+            // Note, if this was a real application we'd try to keep the connection open through
+            // multiple requests.
+            mqUri = new Uri(QueueURI);
+            mqConnectionFactory = new ConnectionFactory
+            {
+                Uri = mqUri ?? throw new ArgumentException("You need to set the Queue URI setting in configuration!")
+            };
+            if (mqConnectionFactory == null) throw new ArgumentException("Failed to create the AQMP connection factory!");
+            mqConnection = mqConnectionFactory.CreateConnection();
+            if (mqConnection == null) throw new ArgumentException("Failed to create the AQMP connection!");
+
+            // Write the request to the queue.
+            mqChannel = mqConnection.CreateModel();
+            mqChannel.QueueDeclare(QueueName, true, false, false); // Durable, Not Exclusive, Not Locked
+            byte[] body = System.Text.Encoding.UTF8.GetBytes(ContentToSend ?? "");
+            mqChannel.BasicPublish(ExchangeName, RoutingKey, true, null, body);
+            StatusBlurb = "Sent!";
+        }
+        catch (Exception ex)
+        {
+            StatusBlurb = ex.Message;
+        }
+        finally
+        {
+            if (mqChannel != null && mqChannel.IsOpen)
+            {
+                mqChannel.Close();
+            }
+        }
+    }
+}
